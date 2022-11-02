@@ -9,6 +9,8 @@ public class Session
   }
 
   public long Id { get; }
+  
+  public string HostName { get; set; }
 
   public long   Host    { get; }
 

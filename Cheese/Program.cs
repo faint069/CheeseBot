@@ -4,7 +4,7 @@ using Telegram.Bot.Exceptions;
 using Telegram.Bot.Polling;
 using Telegram.Bot.Types.Enums;
 
-var botClient = new TelegramBotClient(Config.TelegramToken);
+var botClient = new TelegramBotClient( Config.TelegramToken );
 
 using var cts = new CancellationTokenSource();
 
@@ -22,9 +22,6 @@ var me = await botClient.GetMeAsync();
 
 Console.WriteLine($"Start listening for @{me.Username}");
 Console.ReadLine();
-
-
-
 
 Task HandlePollingErrorAsync(ITelegramBotClient botClient, Exception exception, CancellationToken cancellationToken)
 {

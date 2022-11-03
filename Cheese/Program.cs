@@ -6,6 +6,8 @@ using Telegram.Bot.Types.Enums;
 
 var botClient = new TelegramBotClient( Config.TelegramToken );
 
+Bot.Connect( Config.TelegramToken );
+
 using var cts = new CancellationTokenSource();
 
 var receiverOptions = new ReceiverOptions

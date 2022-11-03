@@ -1,4 +1,5 @@
 using Cheese.Dialogs;
+using DynamicData;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
@@ -23,6 +24,15 @@ public static class MessageHandler
 
     Console.WriteLine($"Received a '{messageText}' message in chat {chatId}.");
 
+    if ( _sessions.Values.Any( _ => _.Players.Items.Contains( chatId ) ) )
+    {
+      var s = _sessions.Values.First( _ => _.Players.Items.Contains( chatId ) );
+      if ( message.Text == "Ready" || message.Text.StartsWith( "r" ) )
+      {
+        
+      }
+    }
+    
     if (_joinGameDialogs.ContainsKey(chatId))
     {
       var dialog = _joinGameDialogs[chatId];
@@ -38,7 +48,7 @@ public static class MessageHandler
       }
     }
     
-    if (message.Text == "/HostGame" || message.Text == "/hg")
+    else if (message.Text == "/HostGame" || message.Text == "/hg")
     {
       var s = new Session(chatId);
       var chatInfo = await botClient.GetChatAsync(chatId, cancellationToken);
@@ -52,7 +62,7 @@ public static class MessageHandler
         cancellationToken: cancellationToken);
     }
 
-    if (message.Text.StartsWith("/JoinGame"))
+    else if (message.Text.StartsWith("/JoinGame"))
     {
       if (_joinGameDialogs.ContainsKey(chatId))
       {
@@ -63,12 +73,18 @@ public static class MessageHandler
         await newDialog.PerformStep(string.Empty);
     }
 
-    if (message.Text == "/ListGames")
+    else if (message.Text == "/ListGames")
     {
       var sentMessage = await botClient.SendTextMessageAsync(chatId: chatId,
         parseMode: ParseMode.MarkdownV2,
         text: $"Available sessions:\n{string.Join('\n', _sessions.Values.Select(_ => $"```{_.Id}``` {_.HostName}"))}",
         cancellationToken: cancellationToken);
+    }
+
+    else if ( message.Text.StartsWith( "/Start" ) || message.Text.StartsWith( "/s" ) )
+    {
+      var s = _sessions.Values.First( _ => _.Host == chatId );
+      await s.StartGame( );
     }
   }
 }

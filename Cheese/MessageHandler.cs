@@ -11,6 +11,9 @@ public static class MessageHandler
   private static Dictionary<long, Session> _sessions = new();
   private static Dictionary<long, JoinGameDialog> _joinGameDialogs = new();
 
+  private static Dictionary<long, Session> _hosters = new();
+  private static Dictionary<long, Player>  _players = new( );
+  
   public static async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update,
     CancellationToken cancellationToken)
   {
@@ -23,15 +26,6 @@ public static class MessageHandler
     var chatId = message.Chat.Id;
 
     Console.WriteLine($"Received a '{messageText}' message in chat {chatId}.");
-
-    if ( _sessions.Values.Any( _ => _.Players.Items.Contains( chatId ) ) )
-    {
-      var s = _sessions.Values.First( _ => _.Players.Items.Contains( chatId ) );
-      if ( message.Text == "Ready" || message.Text.StartsWith( "r" ) )
-      {
-        
-      }
-    }
     
     if (_joinGameDialogs.ContainsKey(chatId))
     {
@@ -39,8 +33,10 @@ public static class MessageHandler
       await dialog.PerformStep(messageText);
       if (dialog.IsOver)
       {
-        _sessions[dialog.SelectedSessionId].Players.Add(chatId);
+        var p = new Player( chatId, _sessions[dialog.SelectedSessionId] );
+        _sessions[dialog.SelectedSessionId].Players.Add( p );
         _joinGameDialogs.Remove(chatId);
+        _players.Add( chatId, p );
         var sentMessage = await botClient.SendTextMessageAsync(chatId: chatId,
           parseMode: ParseMode.MarkdownV2,
           text: $" You was added to session```{dialog.SelectedSessionId}```",
@@ -51,15 +47,9 @@ public static class MessageHandler
     else if (message.Text == "/HostGame" || message.Text == "/hg")
     {
       var s = new Session(chatId);
-      var chatInfo = await botClient.GetChatAsync(chatId, cancellationToken);
-      s.HostName = $"{chatInfo.FirstName} {chatInfo.LastName}";
-
+      
       _sessions.Add(s.Id, s);
-
-      var sentMessage = await botClient.SendTextMessageAsync(chatId: chatId,
-        parseMode: ParseMode.MarkdownV2,
-        text: $"Your new session Id is ```{s.Id}```",
-        cancellationToken: cancellationToken);
+      _hosters.Add(chatId, s);
     }
 
     else if (message.Text.StartsWith("/JoinGame"))
@@ -80,11 +70,15 @@ public static class MessageHandler
         text: $"Available sessions:\n{string.Join('\n', _sessions.Values.Select(_ => $"```{_.Id}``` {_.HostName}"))}",
         cancellationToken: cancellationToken);
     }
-
-    else if ( message.Text.StartsWith( "/Start" ) || message.Text.StartsWith( "/s" ) )
+    
+    else if ( _hosters.ContainsKey( chatId ) )
     {
-      var s = _sessions.Values.First( _ => _.Host == chatId );
-      await s.StartGame( );
+      _hosters[chatId].ProcessMessage( messageText );
+    }
+    
+    if ( _players.ContainsKey( chatId ) )
+    {
+      _players[chatId].ProcessMessage( messageText );
     }
   }
 }

@@ -15,8 +15,7 @@ public class Player : INotifyPropertyChanged
     TelegramId    = telegramId;
     PlayerSession = session;
 
-    var chatInfo = Bot.Client.GetChatAsync( telegramId ).Result;
-    UserName = $"{chatInfo.FirstName} {chatInfo.LastName}";
+    UserName = Bot.GetUserName( telegramId ).Result;
 
     PlayerSession.WhenPropertyChanged( _ => _.State )
                  .Where( _ => _.Value == SessionState.WaitingForPlayers )
@@ -38,12 +37,13 @@ public class Player : INotifyPropertyChanged
 
   public void ProcessMessage( string messageText )
   {
-    if ( messageText.StartsWith( "R" ) || messageText.StartsWith( "Ready" ) )
+    if ( PlayerSession.State is SessionState.WaitingForPlayers &&
+         ( messageText.StartsWith( "R" ) || messageText.StartsWith( "Ready" ) ) )
     {
       IsReady = true;
     }
   }
-  
+
   #region INPC
 
   public event PropertyChangedEventHandler? PropertyChanged;

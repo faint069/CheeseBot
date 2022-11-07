@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Reactive.Linq;
 using System.Runtime.CompilerServices;
 using DynamicData;
+using DynamicData.Binding;
 using Telegram.Bot;
 using Telegram.Bot.Types.Enums;
 
@@ -16,9 +17,8 @@ public class Session : INotifyPropertyChanged
     Id          = Random.Shared.NextInt64( );
     HostId      = hostId;
     TimeStarted = DateTime.Now;
-
-    var chatInfo = Bot.Client.GetChatAsync( HostId ).Result;
-    HostName = $"{chatInfo.FirstName} {chatInfo.LastName}";
+    
+    HostName = Bot.GetUserName( hostId ).Result;
 
     Players.Connect( )
            .OnItemAdded( _ => Bot.Client.SendTextMessageAsync( text: $"New Player {_.UserName} Joined Game.",
@@ -35,6 +35,13 @@ public class Session : INotifyPropertyChanged
            .WhenPropertyChanged( _ => _.IsReady )
            .Where( p => Players.Items.All( x => x.IsReady ) )
            .Subscribe( _ => State = SessionState.Started );
+
+    this.WhenPropertyChanged( _ => _.State )
+        .Where( _ => _.Value == SessionState.Started )
+        .Subscribe( _ =>
+                    {
+                      var game = new Game( this );
+                    } );
   }
 
   public long Id { get; }
@@ -52,15 +59,16 @@ public class Session : INotifyPropertyChanged
   public SourceList<Player> Players { get; } = new( );
 
   public DateTime TimeStarted { get; }
-  
+
   public void ProcessMessage( string messageText )
   {
-    if ( messageText.StartsWith( "/Start" ) || messageText.StartsWith( "/s" ) )
+    if ( State is SessionState.Hosted &&
+         ( messageText.StartsWith( "/Start" ) || messageText.StartsWith( "/s" ) ) )
     {
       State = SessionState.WaitingForPlayers;
     }
   }
-  
+
   #region INPC
 
   public event PropertyChangedEventHandler? PropertyChanged;

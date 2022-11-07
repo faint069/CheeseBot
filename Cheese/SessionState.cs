@@ -4,5 +4,5 @@ public enum SessionState
 {
   Hosted,
   WaitingForPlayers,
-  Started
+  GameStarted
 }

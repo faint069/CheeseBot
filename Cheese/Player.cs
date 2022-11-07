@@ -9,6 +9,7 @@ namespace Cheese;
 public class Player : INotifyPropertyChanged
 {
   private bool _isReady;
+  private bool _gotAnswer;
 
   public Player( long telegramId, Session session )
   {
@@ -33,6 +34,16 @@ public class Player : INotifyPropertyChanged
     set => SetField( ref _isReady, value );
   }
 
+  public bool GotAnswer
+  {
+    get => _gotAnswer;
+    set => SetField( ref _gotAnswer, value);
+  }
+
+  public int Answer { get; set; }
+  
+  public DateTime AnswerTime { get; set; }
+  
   public Session PlayerSession { get; }
 
   public void ProcessMessage( string messageText )
@@ -42,6 +53,20 @@ public class Player : INotifyPropertyChanged
     {
       IsReady = true;
     }
+
+    if (PlayerSession.State is SessionState.GameStarted)
+    {
+      if (int.TryParse(messageText, out var i))
+      {
+        Answer = i;
+        AnswerTime = DateTime.Now;
+        GotAnswer = true;
+      }
+      else
+      {
+        Bot.Client.SendTextMessageAsync(TelegramId, "Please, send valid number");
+      }
+    } 
   }
 
   #region INPC

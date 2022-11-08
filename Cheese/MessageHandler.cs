@@ -11,7 +11,6 @@ public static class MessageHandler
   private static Dictionary<long, Session> _sessions = new();
   private static Dictionary<long, JoinGameDialog> _joinGameDialogs = new();
 
-  private static Dictionary<long, Session> _hosters = new();
   private static Dictionary<long, Player>  _players = new( );
   
   public static async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update,
@@ -44,15 +43,16 @@ public static class MessageHandler
       }
     }
     
-    else if (message.Text == "/HostGame" || message.Text == "/hg")
+    else if (message.Text == "/host" || message.Text == "/hg")
     {
       var s = new Session(chatId);
-      
+      var hostPlayer = new Player( chatId, s ) { IsHost = true };
+      s.Players.Add( hostPlayer );
       _sessions.Add(s.Id, s);
-      _hosters.Add(chatId, s);
+      _players.Add( chatId, hostPlayer );
     }
 
-    else if (message.Text.StartsWith("/JoinGame"))
+    else if (message.Text.StartsWith("/join"))
     {
       if (_joinGameDialogs.ContainsKey(chatId))
       {
@@ -63,17 +63,12 @@ public static class MessageHandler
         await newDialog.PerformStep(string.Empty);
     }
 
-    else if (message.Text == "/ListGames")
+    else if (message.Text == "/list")
     {
       var sentMessage = await botClient.SendTextMessageAsync(chatId: chatId,
         parseMode: ParseMode.MarkdownV2,
         text: $"Available sessions:\n{string.Join('\n', _sessions.Values.Select(_ => $"```{_.Id}``` {_.HostName}"))}",
         cancellationToken: cancellationToken);
-    }
-    
-    else if ( _hosters.ContainsKey( chatId ) )
-    {
-      _hosters[chatId].ProcessMessage( messageText );
     }
     
     if ( _players.ContainsKey( chatId ) )

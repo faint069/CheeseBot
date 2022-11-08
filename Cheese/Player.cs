@@ -20,14 +20,48 @@ public class Player : INotifyPropertyChanged
 
     PlayerSession.WhenPropertyChanged( _ => _.State )
                  .Where( _ => _.Value == SessionState.WaitingForPlayers )
-                 .Subscribe( _ => Bot.Client.SendTextMessageAsync( TelegramId,
-                                                                  "Session is ready to begin. Send R or Ready to start" ) );
+                 .Subscribe( _ =>
+                             {
+                               if ( !IsHost )
+                               {
+                                 Bot.Client.SendTextMessageAsync( TelegramId,
+                                                                 "Session is ready to begin. Send R or Ready to start" );
+                               }
+                             } ); 
+    
+    PlayerSession.WhenPropertyChanged( _ => _.State )
+                 .Where( _ => _.Value is SessionState.RoundEnded  )
+                 .Subscribe( _ =>
+                             {
+                               Answer    = 0;
+                               GotAnswer = false;
+                             } );    
+    
+    PlayerSession.WhenPropertyChanged( _ => _.State )
+                 .Where( _ => _.Value is SessionState.GameEnded  )
+                 .Subscribe( _ =>
+                             {
+                               IsReady   = false;
+                               Answer    = 0;
+                               GotAnswer = false;
+                               WinsCount = 0;
+                             } );
   }
 
   public string UserName { get; }
 
   public long TelegramId { get; }
 
+  public bool IsHost { get; init; }
+
+  public DateTime AnswerTime { get; set; }
+  
+  public Session PlayerSession { get; }
+  
+  public int Answer { get; set; }
+  
+  public int WinsCount { get; set; }
+  
   public bool IsReady
   {
     get => _isReady;
@@ -40,12 +74,7 @@ public class Player : INotifyPropertyChanged
     set => SetField( ref _gotAnswer, value);
   }
 
-  public int Answer { get; set; }
   
-  public DateTime AnswerTime { get; set; }
-  
-  public Session PlayerSession { get; }
-
   public void ProcessMessage( string messageText )
   {
     if ( PlayerSession.State is SessionState.WaitingForPlayers &&
@@ -54,7 +83,7 @@ public class Player : INotifyPropertyChanged
       IsReady = true;
     }
 
-    if (PlayerSession.State is SessionState.GameStarted)
+    else if (PlayerSession.State is SessionState.GameStarted)
     {
       if (int.TryParse(messageText, out var i))
       {
@@ -66,7 +95,15 @@ public class Player : INotifyPropertyChanged
       {
         Bot.Client.SendTextMessageAsync(TelegramId, "Please, send valid number");
       }
-    } 
+    }
+    
+    else if ( IsHost                                                                   &&
+              ( PlayerSession.State is SessionState.Hosted or SessionState.GameEnded ) &&
+              ( messageText.StartsWith( "/start" ) || messageText.StartsWith( "/s" ) ) )
+    {
+      PlayerSession.State = SessionState.WaitingForPlayers;
+      IsReady             = true;
+    }
   }
 
   #region INPC

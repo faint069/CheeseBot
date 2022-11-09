@@ -4,8 +4,6 @@ using Telegram.Bot.Exceptions;
 using Telegram.Bot.Polling;
 using Telegram.Bot.Types.Enums;
 
-var botClient = new TelegramBotClient( Config.TelegramToken );
-
 Bot.Connect( Config.TelegramToken );
 
 using var cts = new CancellationTokenSource();
@@ -14,13 +12,13 @@ var receiverOptions = new ReceiverOptions
                       {
                         AllowedUpdates = Array.Empty<UpdateType>()
                       };
-botClient.StartReceiving( updateHandler: MessageHandler.HandleUpdateAsync,
+Bot.Client.StartReceiving( updateHandler: MessageHandler.HandleUpdateAsync,
                          pollingErrorHandler: HandlePollingErrorAsync,
                          receiverOptions: receiverOptions,
                          cancellationToken: cts.Token
                         );
 
-var me = await botClient.GetMeAsync();
+var me = await Bot.Client.GetMeAsync();
 
 Console.WriteLine($"Start listening for @{me.Username}");
 Console.ReadLine();

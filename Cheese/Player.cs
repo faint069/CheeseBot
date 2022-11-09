@@ -91,6 +91,10 @@ public class Player : INotifyPropertyChanged
     _disposables.ForEach( _ => _.Dispose(  ) );
     _disposables.Clear(  );
     PlayerSession = null;
+    IsReady       = false;
+    IsHost        = false;
+    Answer        = 0;
+    GotAnswer     = false;
   }
   
   public async Task ProcessMessage( string messageText )

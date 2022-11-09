@@ -8,7 +8,10 @@ public static class Bot
 
   public static void Connect( string token )
   {
-    Client = new TelegramBotClient( token );
+    Client = new TelegramBotClient( token )
+             {
+               Timeout = TimeSpan.FromSeconds( 60 )
+             };
   }
 
   public static async Task<string> GetUserName( long chatId )

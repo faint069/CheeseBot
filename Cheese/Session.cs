@@ -210,12 +210,12 @@ public class Session : INotifyPropertyChanged
 
   public void Dispose()
   {
+    _disposables.ForEach( _ => _.Dispose( ) );
+    
     foreach ( var player in Players.Items )
     {
-      player.PlayerSession = null;
+      player.RemoveSession(  );
     }
-    
-    _disposables.ForEach( _ => _.Dispose( ) );
   }
   
   #region INPC

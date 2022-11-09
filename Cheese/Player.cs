@@ -95,7 +95,17 @@ public class Player : INotifyPropertyChanged
   
   public async Task ProcessMessage( string messageText )
   {
-    if ( messageText == "/status" )
+    if ( messageText == "/rules" )
+    {
+      var m =
+        "It is a simple game.\nAt first you should host a game. You will receive a session id. "            +
+        "Other players should start bot and send this id to join your session. Then you can start a game.\n"  +
+        "In game you will receive puzzle, containing dogs, cat, mice and cheese. "                          +
+        "Your goal is to cont how much cheese is left. Dog kicks cat, cat kicks mouse, mouse eat cheese " +
+        "and you should tell how much cheese is left.\nThat's all";
+      await Bot.Client.SendTextMessageAsync( TelegramId, m );
+    }
+    else if ( messageText == "/status" )
     {
       string r;
       if ( PlayerSession is null )

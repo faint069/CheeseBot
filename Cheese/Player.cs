@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Reactive.Linq;
 using System.Runtime.CompilerServices;
+using DynamicData;
 using DynamicData.Binding;
 using Telegram.Bot;
 
@@ -8,55 +9,27 @@ namespace Cheese;
 
 public class Player : INotifyPropertyChanged
 {
-  private bool _isReady;
-  private bool _gotAnswer;
+  private bool              _isReady;
+  private bool              _gotAnswer;
+  private List<IDisposable> _disposables;
 
-  public Player( long telegramId, Session session )
+  public Player( long telegramId )
   {
-    TelegramId    = telegramId;
-    PlayerSession = session;
+    TelegramId = telegramId;
+    UserName   = Bot.GetUserName( telegramId ).Result;
 
-    UserName = Bot.GetUserName( telegramId ).Result;
-
-    PlayerSession.WhenPropertyChanged( _ => _.State )
-                 .Where( _ => _.Value == SessionState.WaitingForPlayers )
-                 .Subscribe( _ =>
-                             {
-                               if ( !IsHost )
-                               {
-                                 Bot.Client.SendTextMessageAsync( TelegramId,
-                                                                 "Session is ready to begin. Send R or Ready to start" );
-                               }
-                             } ); 
-    
-    PlayerSession.WhenPropertyChanged( _ => _.State )
-                 .Where( _ => _.Value is SessionState.RoundEnded  )
-                 .Subscribe( _ =>
-                             {
-                               Answer    = 0;
-                               GotAnswer = false;
-                             } );    
-    
-    PlayerSession.WhenPropertyChanged( _ => _.State )
-                 .Where( _ => _.Value is SessionState.GameEnded  )
-                 .Subscribe( _ =>
-                             {
-                               IsReady   = false;
-                               Answer    = 0;
-                               GotAnswer = false;
-                               WinsCount = 0;
-                             } );
+    _disposables = new List<IDisposable>( );
   }
-
+  
   public string UserName { get; }
 
   public long TelegramId { get; }
 
-  public bool IsHost { get; init; }
+  public bool IsHost { get; set; }
 
   public DateTime AnswerTime { get; set; }
   
-  public Session PlayerSession { get; }
+  public Session? PlayerSession { get; set; }
   
   public int Answer { get; set; }
   
@@ -74,35 +47,152 @@ public class Player : INotifyPropertyChanged
     set => SetField( ref _gotAnswer, value);
   }
 
-  
-  public void ProcessMessage( string messageText )
+  public void AddSession( Session session )
   {
-    if ( PlayerSession.State is SessionState.WaitingForPlayers &&
-         ( messageText.StartsWith( "R" ) || messageText.StartsWith( "Ready" ) ) )
-    {
-      IsReady = true;
-    }
+    session.Players.Add( this );
+    PlayerSession = session;
+    
+    var d1 = PlayerSession.WhenPropertyChanged( _ => _.State )
+                 .Where( _ => _.Value == SessionState.WaitingForPlayers )
+                 .Subscribe( _ =>
+                             {
+                               if ( !IsHost )
+                               {
+                                 Bot.Client.SendTextMessageAsync( TelegramId,
+                                                                 "Session is ready to begin. Send any text message to get ready" );
+                               }
+                             } ); 
+    
+    var d2 = PlayerSession.WhenPropertyChanged( _ => _.State )
+                 .Where( _ => _.Value is SessionState.RoundEnded  )
+                 .Subscribe( _ =>
+                             {
+                               Answer    = 0;
+                               GotAnswer = false;
+                             } );    
+    
+    var d3 = PlayerSession.WhenPropertyChanged( _ => _.State )
+                 .Where( _ => _.Value is SessionState.GameEnded  )
+                 .Subscribe( _ =>
+                             {
+                               IsReady   = false;
+                               Answer    = 0;
+                               GotAnswer = false;
+                               WinsCount = 0;
+                             } );
+    
+    _disposables.Add( d1 );
+    _disposables.Add( d2 );
+    _disposables.Add( d3 );
+  }
 
-    else if (PlayerSession.State is SessionState.GameStarted)
+  public void RemoveSession()
+  {
+    _disposables.ForEach( _ => _.Dispose(  ) );
+    _disposables.Clear(  );
+    PlayerSession = null;
+  }
+  
+  public async Task ProcessMessage( string messageText )
+  {
+    if ( messageText == "/status" )
     {
-      if (int.TryParse(messageText, out var i))
+      string r;
+      if ( PlayerSession is null )
       {
-        Answer = i;
-        AnswerTime = DateTime.Now;
-        GotAnswer = true;
+        r = "You are not in session";
       }
       else
       {
-        Bot.Client.SendTextMessageAsync(TelegramId, "Please, send valid number");
+        r = $"You are in session {PlayerSession}";
+      }
+
+      await Bot.Client.SendTextMessageAsync( TelegramId, r );
+    }
+    else if ( messageText == "/leave" )
+    {
+      if ( IsHost )
+      {
+        var tasks =
+          PlayerSession.Players.Items.Select( _ => Bot.Client.SendTextMessageAsync( _.TelegramId,
+                                               $"Session {PlayerSession.Id} is closed. by hoster" ) );
+        await Task.WhenAll( tasks );
+        DataStore.RemoveSessionById( PlayerSession.Id );
+      }
+      else
+      {
+        PlayerSession?.Players.Remove( this );
+        RemoveSession( );
+        await Bot.Client.SendTextMessageAsync( TelegramId, $"You left session {PlayerSession?.Id}" );
       }
     }
-    
-    else if ( IsHost                                                                   &&
-              ( PlayerSession.State is SessionState.Hosted or SessionState.GameEnded ) &&
-              ( messageText.StartsWith( "/start" ) || messageText.StartsWith( "/s" ) ) )
+    else if ( PlayerSession is null )
     {
-      PlayerSession.State = SessionState.WaitingForPlayers;
-      IsReady             = true;
+      if ( messageText == "/join" )
+      {
+        await Bot.Client.SendTextMessageAsync( TelegramId, $"Provide Session Id" );
+      }
+      else if (long.TryParse(messageText, out var sessionId))
+      {
+        if ( DataStore.CheckIfSessionExist( sessionId ) )
+        {
+          AddSession( DataStore.GetSessionById( sessionId ) );
+        }
+        else
+        {
+          await Bot.Client.SendTextMessageAsync( TelegramId, "Session with provided Id doesn't exist. Try another" );
+        }
+      }
+      else if ( messageText == "/host" )
+      {
+        DataStore.AddNewSession( this );
+      }
+      else
+      {
+        await Bot.Client.SendTextMessageAsync( TelegramId, $"You must host or join game first. Use commands" );
+      }
+    }
+    else
+    {
+      if ( messageText is "/join" or "/host" )
+      {
+        if ( IsHost )
+        {
+          await Bot.Client.SendTextMessageAsync( TelegramId,
+                                                $"Currently you are hosting session {PlayerSession.Id}. Leave it first" );
+        }
+        else
+        {
+          await Bot.Client.SendTextMessageAsync( TelegramId,
+                                                $"You are now in session {PlayerSession.Id}. Leave it first" );
+        }
+      }
+      if ( PlayerSession.State is SessionState.WaitingForPlayers )
+      {
+        IsReady = true;
+      }
+
+      else if (PlayerSession.State is SessionState.GameStarted)
+      {
+        if (int.TryParse(messageText, out var i))
+        {
+          Answer     = i;
+          AnswerTime = DateTime.Now;
+          GotAnswer  = true;
+        }
+        else
+        {
+          await Bot.Client.SendTextMessageAsync(TelegramId, "Please, send valid number");
+        }
+      }
+    
+      else if ( IsHost                                                                   &&
+                ( PlayerSession.State is SessionState.Hosted or SessionState.GameEnded ) &&
+                ( messageText.StartsWith( "/start" ) || messageText.StartsWith( "/s" ) ) )
+      {
+        PlayerSession.State = SessionState.WaitingForPlayers;
+        IsReady             = true;
+      }
     }
   }
 

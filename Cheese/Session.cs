@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Reactive.Linq;
 using System.Runtime.CompilerServices;
+using System.Text;
 using DynamicData;
 using DynamicData.Binding;
 using Telegram.Bot;
@@ -11,61 +12,72 @@ namespace Cheese;
 
 public class Session : INotifyPropertyChanged
 {
-  private       SessionState _state = SessionState.Hosted;
-  private       int          _rightAnswer;
-  private       int          _roundCount;
-  private const int          MaxRounds = 5;
+  private       List<IDisposable> _disposables;
+  private       SessionState      _state = SessionState.Hosted;
+  private       int               _rightAnswer;
+  private       int               _roundCount;
+  
+  private const int               MaxRounds = 5;
 
   public Session( long hostId )
   {
     Id          = Random.Shared.NextInt64( );
     HostId      = hostId;
     TimeStarted = DateTime.Now;
-    
+
     HostName = Bot.GetUserName( hostId ).Result;
 
-    Players.Connect( )
-           .OnItemAdded( _ =>
-                         {
-                           if ( !_.IsHost )
-                           {
-                             Bot.Client.SendTextMessageAsync( text: $"New Player {_.UserName} Joined Game.",
-                                                             chatId: HostId );
-                           }
-                         } )
-           .OnItemRemoved( _ => Bot.Client.SendTextMessageAsync( text: $"Player {_.UserName} Left Game",
-                                                                chatId: HostId ) )
-           .Subscribe( );
-
+    _disposables = new List<IDisposable>( );
+    
     Bot.Client.SendTextMessageAsync( chatId: HostId,
                                     parseMode: ParseMode.MarkdownV2,
                                     text: $"Your new session Id is ```{Id}```" );
 
-    Players.Connect( )
-           .WhenPropertyChanged( _ => _.IsReady )
-           .Where( p => Players.Items.All( x => x.IsReady ) )
-           .Subscribe( _ => State = SessionState.GameStarted );
-    
-    Players.Connect( )
-           .WhenPropertyChanged( _ => _.GotAnswer )
-           .Where( p => Players.Items.All( x => x.GotAnswer ) )
-           .Subscribe( async _ =>
-                       {
-                         await CheckAnswers( );
-                         if ( State is not SessionState.GameEnded )
-                         {
-                           State = SessionState.RoundEnded;
-                           State = SessionState.GameStarted;
-                         }
-                       } );
+    var d1 = Players.Connect( )
+                    .OnItemAdded( _ =>
+                                  {
+                                    if ( !_.IsHost )
+                                    {
+                                      Bot.Client.SendTextMessageAsync( text: $"New player {_.UserName} joined session.",
+                                                                      chatId: HostId );
+                                    }
+                                  } )
+                    .OnItemRemoved( _ => Bot.Client.SendTextMessageAsync( text: $"Player {_.UserName} left session",
+                                                                         chatId: HostId ) )
+                    .Subscribe( );
 
-    this.WhenPropertyChanged( _ => _.State )
-        .Where( _ => _.Value == SessionState.GameStarted )
-        .Subscribe( async _ => await StartGame( ) );
-    
-    this.WhenPropertyChanged( _ => _.State )
-        .Where( _ => _.Value == SessionState.GameEnded )
-        .Subscribe( async _ => await SendResults() );
+
+    var d2 = Players.Connect( )
+                    .WhenPropertyChanged( _ => _.IsReady )
+                    .Where( p => Players.Items.All( x => x.IsReady ) )
+                    .Subscribe( _ => State = SessionState.GameStarted );
+
+    var d3 = Players.Connect( )
+                    .WhenPropertyChanged( _ => _.GotAnswer )
+                    .Where( p => Players.Items.All( x => x.GotAnswer ) )
+                    .Subscribe( async _ =>
+                                {
+                                  await CheckAnswers( );
+                                  if ( State is not SessionState.GameEnded )
+                                  {
+                                    State = SessionState.RoundEnded;
+                                    State = SessionState.GameStarted;
+                                  }
+                                } );
+
+    var d4 = this.WhenPropertyChanged( _ => _.State )
+                 .Where( _ => _.Value == SessionState.GameStarted )
+                 .Subscribe( async _ => await StartGame( ) );
+
+    var d5 = this.WhenPropertyChanged( _ => _.State )
+                 .Where( _ => _.Value == SessionState.GameEnded )
+                 .Subscribe( async _ => await SendResults( ) );
+
+    _disposables.Add( d1 );
+    _disposables.Add( d2 );
+    _disposables.Add( d3 );
+    _disposables.Add( d4 );
+    _disposables.Add( d5 );
   }
 
   public long Id { get; }
@@ -158,9 +170,7 @@ public class Session : INotifyPropertyChanged
     var tasks = p.Select( _ => Bot.Client.SendTextMessageAsync( _.TelegramId, m, ParseMode.MarkdownV2 ) );
     await Task.WhenAll( tasks );
   }
-
-
-
+  
   private string GenerateTrivia()
   {
     var cheese = Random.Shared.Next( 1, 10 );
@@ -185,6 +195,27 @@ public class Session : INotifyPropertyChanged
     }
 
     return string.Join( "", str );  
+  }
+
+  public override string ToString()
+  {
+    var sb = new StringBuilder( );
+    sb.AppendLine( $"Id: {Id}" );
+    sb.AppendLine( $"Hoster: {HostName}" );
+    sb.AppendLine( $"State: {State}" );
+    sb.AppendLine( "Players in session:");
+    sb.AppendJoin( "\n", Players.Items.Select( _ => _.UserName ) );
+    return sb.ToString( );
+  }
+
+  public void Dispose()
+  {
+    foreach ( var player in Players.Items )
+    {
+      player.PlayerSession = null;
+    }
+    
+    _disposables.ForEach( _ => _.Dispose( ) );
   }
   
   #region INPC

@@ -21,7 +21,7 @@ Bot.Client.StartReceiving( updateHandler: MessageHandler.HandleUpdateAsync,
 var me = await Bot.Client.GetMeAsync();
 
 Console.WriteLine($"Start listening for @{me.Username}");
-Console.ReadLine();
+await Task.Delay( -1 );
 
 Task HandlePollingErrorAsync(ITelegramBotClient botClient, Exception exception, CancellationToken cancellationToken)
 {
